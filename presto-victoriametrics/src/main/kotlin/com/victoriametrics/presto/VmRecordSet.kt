@@ -13,6 +13,7 @@
  */
 package com.victoriametrics.presto
 
+import com.facebook.airlift.log.Logger
 import com.facebook.presto.spi.ColumnMetadata
 import com.facebook.presto.spi.RecordCursor
 import com.facebook.presto.spi.RecordSet
@@ -22,7 +23,6 @@ import com.victoriametrics.presto.model.VmSplit
 import okhttp3.Call
 import okhttp3.Request
 import java.io.IOException
-import java.util.concurrent.CompletableFuture
 
 class VmRecordSet(
         metadata: VmMetadata,
@@ -31,6 +31,9 @@ class VmRecordSet(
         split: VmSplit,
         requestedColumns: List<VmColumnHandle>
 ) : RecordSet {
+    companion object {
+        private val log = Logger.get(VmRecordSet::class.java)!!
+    }
 
     /** In the same order as `requestedColumns` */
     private val fieldColumns: List<ColumnMetadata> = requestedColumns
@@ -44,14 +47,12 @@ class VmRecordSet(
 
     override fun cursor(): RecordCursor {
         // TODO: parallelize requests
-        val sources = urls
-                .map { url ->
-                    CompletableFuture.runAsync {  }
+        val sources = urls.map { url ->
+            log.info("Requesting {}", url)
             val request = Request.Builder()
                     .get()
                     .url(url)
                     .build()
-
             val call = httpClient.newCall(request)
             val response = call.execute()
 
