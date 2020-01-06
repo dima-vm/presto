@@ -18,15 +18,21 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonConfiguration
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.content
 
 
 @Serializable
 data class ExportResponseLine(
-    @Required private val metric: JsonObject,
-    @Required val values: DoubleArray,
-    @Required val timestamps: LongArray
+        @Required private val metric: JsonObject,
+        @Required val values: DoubleArray,
+        @Required val timestamps: LongArray
 ) {
     val metricName = metric.toString()
+    val name: String = metric.getPrimitive("__name__").content
+    val labels: Map<String, String> = metric.entries
+            .filter { it.key != "__name__" }
+            .map { entry -> entry.key to entry.value.content }
+            .toMap()
 
     companion object {
         private val json = Json(JsonConfiguration.Stable)

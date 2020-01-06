@@ -15,9 +15,12 @@ package com.victoriametrics.presto
 
 import com.facebook.presto.spi.ColumnMetadata
 import com.facebook.presto.spi.RecordCursor
+import com.facebook.presto.spi.block.MapBlockBuilder
+import com.facebook.presto.spi.block.SingleMapBlock
 import com.facebook.presto.spi.type.BigintType
 import com.facebook.presto.spi.type.BooleanType
 import com.facebook.presto.spi.type.DoubleType
+import com.facebook.presto.spi.type.MapType
 import com.facebook.presto.spi.type.Type
 import com.facebook.presto.spi.type.VarcharType
 import com.victoriametrics.presto.model.ExportResponseLine
@@ -71,7 +74,20 @@ class VmRecordCursor(
 
     override fun getSlice(field: Int): Slice {
         checkCursorAndField(field, "name")
-        return Slices.utf8Slice(line!!.metricName)
+        return Slices.utf8Slice(line!!.name)
+    }
+
+    fun getLabels(field: Int): SingleMapBlock {
+        checkCursorAndField(field, "labels")
+        val mapType = fieldColumns[field].type as MapType
+        val blockBuilder = mapType.createBlockBuilder(null, line!!.labels.size) as MapBlockBuilder
+        val blockWriter = blockBuilder.beginBlockEntry()
+        line!!.labels.entries.forEach { (key, value) ->
+            VarcharType.VARCHAR.writeString(blockWriter, key)
+            VarcharType.VARCHAR.writeString(blockWriter, value)
+        }
+        blockBuilder.closeEntryStrict()
+        return mapType.getObject(blockBuilder, 0) as SingleMapBlock
     }
 
     override fun getObject(field: Int): Any {
@@ -82,6 +98,7 @@ class VmRecordCursor(
             is BigintType -> getLong(field)
             is BooleanType -> getBoolean(field)
             is VarcharType -> getSlice(field)
+            is MapType -> getLabels(field)
             else -> throw IllegalStateException("${fieldColumns[field].type}")
         }
     }
