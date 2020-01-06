@@ -14,14 +14,15 @@
 package com.victoriametrics.presto
 
 import com.facebook.presto.spi.ColumnHandle
+import com.facebook.presto.spi.predicate.Marker
 import com.facebook.presto.spi.predicate.Marker.Bound.EXACTLY
 import com.facebook.presto.spi.predicate.Range
 import com.facebook.presto.spi.predicate.SortedRangeSet
 import com.facebook.presto.spi.predicate.TupleDomain
-import com.facebook.presto.spi.predicate.ValueSet
 import com.facebook.presto.spi.relation.RowExpression
 import com.victoriametrics.presto.model.VmColumnHandle
 import com.victoriametrics.presto.model.VmConfig
+import io.airlift.slice.Slice
 import okhttp3.HttpUrl
 import javax.inject.Inject
 
@@ -33,31 +34,69 @@ class QueryBuilder
                 .random()
                 .newBuilder()
                 .addPathSegment("export")
-                .addQueryParameter("match", getMatch())
                 .build()
     }
 
     fun build(constraint: TupleDomain<ColumnHandle>): List<HttpUrl> {
-        val baseQuery = getBaseQuery()
+        var queries = listOf(getBaseQuery())
 
-        val timestampRanges = getTimestampRanges(constraint)
-        if (timestampRanges.isEmpty()) {
-            return listOf(baseQuery)
+        if (!constraint.columnDomains.isPresent) {
+            return queries
         }
 
-        return timestampRanges.map {
-            val queryParams = toQueryParams(it)
-            val queryBuilder = baseQuery.newBuilder()
-            queryParams.forEach { (key, value) ->
-                queryBuilder.addQueryParameter(key, value)
+        val nameQuery: List<String> = getRequestedMetricNames(constraint)
+        if (nameQuery.isNotEmpty()) {
+            queries = nameQuery.flatMap { name ->
+                queries.map { query ->
+                    query.newBuilder()
+                            .addQueryParameter("match", "{__name__=\"$name\"}")
+                            .build()
+                }
             }
-            queryBuilder.build()
         }
+
+        val timestampRanges: List<Range> = getTimestampRanges(constraint)
+        if (timestampRanges.isNotEmpty()) {
+            queries = timestampRanges.flatMap { timestampRange ->
+                val queryParams = toQueryParams(timestampRange)
+                queries.map { query ->
+                    val builder = query.newBuilder()
+                    queryParams.forEach { (key, value) ->
+                        builder.addQueryParameter(key, value)
+                    }
+                    builder.build()
+                }
+            }
+        }
+
+        return queries
+    }
+
+    private fun getRequestedMetricNames(constraint: TupleDomain<ColumnHandle>): List<String> {
+
+        return constraint.columnDomains.get()
+                .filter { (it.column as VmColumnHandle).columnName == "name" }
+                .map { it.domain.values }
+                .filterIsInstance(SortedRangeSet::class.java)
+                .flatMap { it.orderedRanges }
+                .filter { it.isSingleValue }
+                .map { it.singleValue as Slice }
+                .map { it.toString(Charsets.UTF_8) }
+
+    }
+
+    // TODO: check that presto engine still filters out values that are within the span (per unenforcedConstraints)
+    private fun getTimestampRanges(constraint: TupleDomain<ColumnHandle>): List<Range> {
+        return constraint.columnDomains.get()
+                .filter { (it.column as VmColumnHandle).columnName == "timestamp" }
+                .map { it.domain.values }
+                .filterIsInstance(SortedRangeSet::class.java)
+                .flatMap { it.orderedRanges }
     }
 
     private fun toQueryParams(range: Range): MutableMap<String, String> {
         val queryParams = mutableMapOf<String, String>()
-        val low = range.low
+        val low: Marker = range.low
         val high = range.high
         if (low.valueBlock.isPresent) {
             var value = (low.value as Long).toDouble()
@@ -78,49 +117,27 @@ class QueryBuilder
         return queryParams
     }
 
-    private fun getMatch() = "{__name__=~\"vm_blocks\"}"
-
-    // TODO: return all ranges rather than "span" and make separate /export calls for each range.
-    // TODO: check that presto engine still filters out values that are within the span (per unenforcedConstraints)
-    private fun getTimestampRanges(constraint: TupleDomain<ColumnHandle>): List<Range> {
-        val ranges = mutableListOf<Range>()
-
-        if (!constraint.columnDomains.isPresent) return ranges
-
-        for (columnDomain in constraint.columnDomains.get()) {
-            val column = columnDomain.column as VmColumnHandle
-            val values: ValueSet = columnDomain.domain.values
-
-            if (column.columnName != "timestamp") continue
-            if (values !is SortedRangeSet) continue
-
-            ranges.addAll(values.orderedRanges)
-        }
-
-        return ranges
-    }
-
-    /**
-     * @return unenforced expression
-     */
-    fun buildFromPushdown(filter: RowExpression): VmQuery {
-        val baseQuery = getBaseQuery()
-
-        // if (filter !is CallExpression) {
-            return VmQuery(listOf(baseQuery), unenforced = filter)
-        // }
-
-
-        // for (argument in filter.arguments) {
-        //     if (argument is) {
-        //
-        //     }
-        // }
-        //
-        //
-        // filter.arguments
-
-    }
+    // /**
+    //  * @return unenforced expression
+    //  */
+    // fun buildFromPushdown(filter: RowExpression): VmQuery {
+    //     val baseQuery = getBaseQuery()
+    //
+    //     // if (filter !is CallExpression) {
+    //     return VmQuery(listOf(baseQuery), unenforced = filter)
+    //     // }
+    //
+    //
+    //     // for (argument in filter.arguments) {
+    //     //     if (argument is) {
+    //     //
+    //     //     }
+    //     // }
+    //     //
+    //     //
+    //     // filter.arguments
+    //
+    // }
 
     data class VmQuery(
             val urls: List<HttpUrl>,
