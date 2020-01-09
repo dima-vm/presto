@@ -39,7 +39,6 @@ import com.facebook.presto.spi.type.DoubleType
 import com.facebook.presto.spi.type.MapType
 import com.facebook.presto.spi.type.TimestampType
 import com.facebook.presto.spi.type.VarcharType
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.victoriametrics.presto.model.VmColumnHandle
 import com.victoriametrics.presto.model.VmTableHandle
 import com.victoriametrics.presto.model.VmTableLayoutHandle
@@ -48,9 +47,7 @@ import javax.inject.Inject
 
 class VmMetadata
 @Inject constructor(
-        private val context: ConnectorContext,
-        private val queryBuilder: QueryBuilder,
-        private val objectMapper: ObjectMapper
+        private val context: ConnectorContext
 ) : ConnectorMetadata {
     private val log = Logger.get(VmMetadata::class.java)!!
 
@@ -119,7 +116,7 @@ class VmMetadata
     }
 
     override fun isPushdownFilterSupported(session: ConnectorSession, tableHandle: ConnectorTableHandle): Boolean {
-        return false
+        return true
     }
 
     override fun pushdownFilter(
@@ -136,7 +133,6 @@ class VmMetadata
 
         val domainTranslator: DomainTranslator = context.rowExpressionService.domainTranslator
         val extractionResult = domainTranslator.fromPredicate(session, filter) { expr, domain ->
-            println(expr.type)
             if (expr is VariableReferenceExpression && expr.name == "timestamp" && domain.values is SortedRangeSet) {
                 Optional.of(VmColumnHandle("timestamp") as ColumnHandle)
             } else {
@@ -161,10 +157,15 @@ class VmMetadata
         // val unenforcedFiler = TRUE_CONSTANT
 
         // Doesn't work, must be OriginalExpression.
-        val unenforcedFiler = extractionResult.remainingExpression
-        return ConnectorPushdownFilterResult(tableLayout, unenforcedFiler)
+        val unenforcedFilter = extractionResult.remainingExpression
+        return ConnectorPushdownFilterResult(tableLayout, filter)
     }
 
+    /**
+     * Note: this approach doesn't work with Map columns (like "labels"), because this constraint.columnDomains
+     * will be empty even when SQL query has filter over it.
+     * For example, "WHERE labels['type']='foobar'" -- this method will not receive any column domains.
+     */
     override fun getTableLayouts(
             session: ConnectorSession,
             table: ConnectorTableHandle,

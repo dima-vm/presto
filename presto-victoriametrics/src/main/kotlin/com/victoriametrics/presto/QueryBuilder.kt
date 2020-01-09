@@ -44,37 +44,15 @@ class QueryBuilder
             return queries
         }
 
-        val nameQuery: List<String> = getRequestedMetricNames(constraint)
-        if (nameQuery.isNotEmpty()) {
-            queries = nameQuery.flatMap { name ->
-                queries.map { query ->
-                    query.newBuilder()
-                            .addQueryParameter("match", "{__name__=\"$name\"}")
-                            .build()
-                }
-            }
-        }
-
-        val timestampRanges: List<Range> = getTimestampRanges(constraint)
-        if (timestampRanges.isNotEmpty()) {
-            queries = timestampRanges.flatMap { timestampRange ->
-                val queryParams = toQueryParams(timestampRange)
-                queries.map { query ->
-                    val builder = query.newBuilder()
-                    queryParams.forEach { (key, value) ->
-                        builder.addQueryParameter(key, value)
-                    }
-                    builder.build()
-                }
-            }
-        }
+        queries = handleMetricName(constraint, queries)
+        queries = handleLabels(constraint, queries)
+        queries = handleTimestamps(constraint, queries)
 
         return queries
     }
 
-    private fun getRequestedMetricNames(constraint: TupleDomain<ColumnHandle>): List<String> {
-
-        return constraint.columnDomains.get()
+    private fun handleMetricName(constraint: TupleDomain<ColumnHandle>, queries: List<HttpUrl>): List<HttpUrl> {
+        val names = constraint.columnDomains.get()
                 .filter { (it.column as VmColumnHandle).columnName == "name" }
                 .map { it.domain.values }
                 .filterIsInstance(SortedRangeSet::class.java)
@@ -83,15 +61,64 @@ class QueryBuilder
                 .map { it.singleValue as Slice }
                 .map { it.toString(Charsets.UTF_8) }
 
+        if (names.isEmpty()) {
+            return queries
+        }
+
+        return names.flatMap { name ->
+            queries.map { query ->
+                query.newBuilder()
+                        .addQueryParameter("match", "{__name__=\"$name\"}")
+                        .build()
+            }
+        }
+    }
+
+    private fun handleLabels(constraint: TupleDomain<ColumnHandle>, queries: List<HttpUrl>): List<HttpUrl> {
+        val names = constraint.columnDomains.get()
+                .filter { (it.column as VmColumnHandle).columnName == "labels" }
+                .map { it.domain.values }
+                .filterIsInstance(SortedRangeSet::class.java)
+                .flatMap { it.orderedRanges }
+                .filter { it.isSingleValue }
+                .map { it.singleValue as Slice }
+                .map { it.toString(Charsets.UTF_8) }
+
+        if (names.isEmpty()) {
+            return queries
+        }
+
+        return names.flatMap { name ->
+            queries.map { query ->
+                query.newBuilder()
+                        .addQueryParameter("match", "{__name__=\"$name\"}")
+                        .build()
+            }
+        }
     }
 
     // TODO: check that presto engine still filters out values that are within the span (per unenforcedConstraints)
-    private fun getTimestampRanges(constraint: TupleDomain<ColumnHandle>): List<Range> {
-        return constraint.columnDomains.get()
+    private fun handleTimestamps(constraint: TupleDomain<ColumnHandle>, queries: List<HttpUrl>): List<HttpUrl> {
+        val ranges = constraint.columnDomains.get()
                 .filter { (it.column as VmColumnHandle).columnName == "timestamp" }
                 .map { it.domain.values }
                 .filterIsInstance(SortedRangeSet::class.java)
                 .flatMap { it.orderedRanges }
+
+        if (ranges.isEmpty()) {
+            return queries
+        }
+
+        return ranges.flatMap { timestampRange ->
+            val queryParams = toQueryParams(timestampRange)
+            queries.map { query ->
+                val builder = query.newBuilder()
+                queryParams.forEach { (key, value) ->
+                    builder.addQueryParameter(key, value)
+                }
+                builder.build()
+            }
+        }
     }
 
     private fun toQueryParams(range: Range): MutableMap<String, String> {

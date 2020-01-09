@@ -57,7 +57,7 @@ class VmRecordSet(
             val response = call.execute()
 
             if (response.code / 100 != 2) {
-                throw IOException("Response code is ${response.code}")
+                throw IOException("Response code is ${response.code}: ${response.message} url=${response.request.url}")
             }
 
             response.body!!.source()
