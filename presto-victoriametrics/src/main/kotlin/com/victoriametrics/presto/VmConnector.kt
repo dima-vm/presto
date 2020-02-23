@@ -26,7 +26,8 @@ class VmConnector
 @Inject constructor(
         private val recordSetProvider: VmRecordSetProvider,
         private val splitManager: VmSplitManager,
-        private val metadata: VmMetadata
+        private val metadata: VmMetadata,
+        private val connectorPlanOptimizerProvider: VmConnectorPlanOptimizer.Provider
 ) : Connector {
     companion object {
         val log = Logger.get(VmConnector::class.java)!!
@@ -42,4 +43,6 @@ class VmConnector
     override fun getSplitManager() = splitManager
 
     override fun getRecordSetProvider() = recordSetProvider
+
+    override fun getConnectorPlanOptimizerProvider() = connectorPlanOptimizerProvider
 }

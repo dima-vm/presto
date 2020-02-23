@@ -116,7 +116,7 @@ class VmMetadata
     }
 
     override fun isPushdownFilterSupported(session: ConnectorSession, tableHandle: ConnectorTableHandle): Boolean {
-        return true
+        return false
     }
 
     override fun pushdownFilter(
