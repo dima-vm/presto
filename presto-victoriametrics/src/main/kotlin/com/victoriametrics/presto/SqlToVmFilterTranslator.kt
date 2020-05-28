@@ -27,7 +27,7 @@ import com.victoriametrics.presto.VmConnectorPlanOptimizer.VmExpression
 import java.util.*
 import javax.inject.Inject
 
-class VmFilterToSqlTranslator @Inject constructor(val functionManager: FunctionMetadataManager) :
+class SqlToVmFilterTranslator @Inject constructor(val functionManager: FunctionMetadataManager) :
         RowExpressionTranslator<VmExpression, Map<VariableReferenceExpression, ColumnHandle>>()
 {
     override fun translateCall(
@@ -39,9 +39,11 @@ class VmFilterToSqlTranslator @Inject constructor(val functionManager: FunctionM
             rowExpressionTreeTranslator.rewrite(it, context)
         }
         val functionMetadata = functionManager.getFunctionMetadata(call.functionHandle)
+        val expression: VmExpression = VmExpression(call.functionHandle)
+
         // functionMapping.get(functionMetadata).invokeWithArguments(translatedArguments)
-        VmExpression()
-        return TranslatedExpression<VmExpression>(Optional.of(call.functionHandle), call, translated);
+//        return VmExpression()
+        return TranslatedExpression(Optional.of(expression), call, translated)
         // return super.translateCall(call, context, rowExpressionTreeTranslator)
     }
 

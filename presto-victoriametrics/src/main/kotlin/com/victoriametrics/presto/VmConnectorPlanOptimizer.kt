@@ -21,6 +21,7 @@ import com.facebook.presto.spi.ConnectorSession
 import com.facebook.presto.spi.VariableAllocator
 import com.facebook.presto.spi.connector.ConnectorContext
 import com.facebook.presto.spi.connector.ConnectorPlanOptimizerProvider
+import com.facebook.presto.spi.function.FunctionHandle
 import com.facebook.presto.spi.plan.FilterNode
 import com.facebook.presto.spi.plan.PlanNode
 import com.facebook.presto.spi.plan.PlanNodeIdAllocator
@@ -36,7 +37,7 @@ import javax.inject.Singleton
 class VmConnectorPlanOptimizer @Inject constructor(
         val context: ConnectorContext
 ) : ConnectorPlanOptimizer {
-    data class VmExpression(val a: String)
+    data class VmExpression(val a: FunctionHandle)
 
     override fun optimize(
             maxSubplan: PlanNode,
@@ -72,7 +73,7 @@ class VmConnectorPlanOptimizer @Inject constructor(
             val c = source.currentConstraint // TupleDomain{All}
             val e = source.enforcedConstraint // TupleDomain{All}
 
-            val vmFilterToSqlTranslator = VmFilterToSqlTranslator(
+            val vmFilterToSqlTranslator = SqlToVmFilterTranslator(
                     context.functionMetadataManager
                     // FunctionTranslator.buildFunctionTranslator(functionTranslators)
             )
@@ -113,7 +114,7 @@ class VmConnectorPlanOptimizer @Inject constructor(
                     source.currentConstraint,
                     source.enforcedConstraint)
 
-            return return FilterNode(idAllocator.nextId, newTableScanNode, node.predicate)
+            return FilterNode(idAllocator.nextId, newTableScanNode, node.predicate)
 
 
             // var predicate: RowExpression = expressionOptimizer.optimize(node.predicate, ExpressionOptimizer.Level.OPTIMIZED, session)
