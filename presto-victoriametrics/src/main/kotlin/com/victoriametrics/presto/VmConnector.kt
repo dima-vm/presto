@@ -44,5 +44,6 @@ class VmConnector
 
     override fun getRecordSetProvider() = recordSetProvider
 
-    override fun getConnectorPlanOptimizerProvider() = connectorPlanOptimizerProvider
+    override fun getConnectorPlanOptimizerProvider() =
+            connectorPlanOptimizerProvider
 }
